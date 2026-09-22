@@ -1,6 +1,6 @@
 try { require('dotenv').config(); } catch (_) {}
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const cors = require('cors');
 const session = require('express-session');
 const axios = require('axios');
@@ -85,6 +85,7 @@ const sessions = new Map();
 async function browserSeed() {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: process.env.CHROME_PATH || '/root/.cache/puppeteer/chrome/linux-148.0.7778.97/chrome-linux64/chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
   const page = await browser.newPage();
