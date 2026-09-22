@@ -70,38 +70,57 @@ app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }
 
 // ======================= [真·官方协议] 获取 QR Seed =======================
 // 来源：真实抓包 https://profile.starbucks.com.cn/api/qrcode/seed
+const sessions = new Map();
+
 async function browserSeed() {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
-  try {
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    const hit = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('seed timeout')), 25000);
-      page.on('response', async (resp) => {
-        if (!resp.url().includes('/api/qrcode/seed')) return;
-        try {
-          const data = await resp.json();
-          if (data.seed) {
-            clearTimeout(timer);
-            resolve(data.seed);
-          }
-        } catch (_) {}
-      });
-    });
-    await page.goto('https://www.starbucks.com.cn/account/', { waitUntil: 'networkidle2', timeout: 30000 });
-    return await hit;
-  } finally {
+  const page = await browser.newPage();
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+  let seed = '';
+  page.on('response', async (resp) => {
+    if (!resp.url().includes('/api/qrcode/seed')) return;
+    try {
+      const data = await resp.json();
+      if (data.seed) seed = data.seed;
+    } catch (_) {}
+  });
+  await page.goto('https://www.starbucks.com.cn/account/', { waitUntil: 'networkidle2', timeout: 40000 });
+  for (let i = 0; i < 20 && !seed; i++) await new Promise(r => setTimeout(r, 500));
+  if (!seed) {
     await browser.close();
+    throw new Error('no seed');
   }
+  return { browser, page, seed };
+}
+
+async function readCoupons(page) {
+  return page.evaluate(async () => {
+    const urls = [
+      'https://profile.starbucks.com.cn/api/Customers/rewards?status=active&pageNum=1&pageSize=50',
+      'https://profile.starbucks.com.cn/api/Customers/rewards?status=ALL&pageNum=1&pageSize=50'
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json', 'x-msr-version': '2' } });
+        const data = await r.json();
+        const raw = data.data || data.rewards || data.coupons || data;
+        if (Array.isArray(raw) && raw.length) return raw;
+        if (Array.isArray(data) && data.length) return data;
+      } catch (_) {}
+    }
+    return [];
+  });
 }
 
 app.post('/api/qrcode/seed', async (req, res) => {
   try {
     console.log('[QR] 浏览器自动获取官方 seed...');
-    const realSeed = await browserSeed();
+    const opened = await browserSeed();
+    const realSeed = opened.seed;
+    sessions.set(realSeed, opened);
     console.log('[QR] seed', realSeed);
     req.session.qrRealSeed = realSeed;
     req.session.qrCreatedAt = Date.now();
@@ -207,8 +226,20 @@ app.get('/api/qrcode/status', async (req, res) => {
         req.session.isLoggedIn = true;
         req.session.user = { id: 'qr', name: '扫码用户', level: '会员' };
         req.session.qrPhase = 'done';
-        req.session.coupons = await loadCoupons(req.session.bffToken);
-        return res.json({ status: 'confirmed', count: req.session.coupons.length });
+        const opened = sessions.get(req.session.qrRealSeed);
+        if (opened) {
+          req.session.coupons = (await readCoupons(opened.page)).map(c => ({
+            no: c.couponNo || c.benefitId || c.id || c.voucherNum || '',
+            code: c.code || c.couponCode || c.poskey || c.formattedPoskey || c.couponNo || '',
+            name: c.title || c.name || c.benefitName || '好礼券',
+            expire: c.expiryDate || c.expireDate || c.validEndTime || '',
+            type: c.status || '好礼券'
+          }));
+          console.log('[Coupons] browser', req.session.coupons.length);
+          await opened.browser.close();
+          sessions.delete(req.session.qrRealSeed);
+        }
+        return res.json({ status: 'confirmed', count: (req.session.coupons || []).length });
       }
       if (req.session.qrPhase === 'done') return res.json({ status: 'confirmed' });
       if (data.code === 80033) return res.json({ status: 'scanned' });
