@@ -85,7 +85,7 @@ const sessions = new Map();
 async function browserSeed() {
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: process.env.CHROME_PATH || '/root/.cache/puppeteer/chrome/linux-148.0.7778.97/chrome-linux64/chrome',
+    executablePath: process.env.CHROME_PATH || '/opt/google/chrome/google-chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
   const page = await browser.newPage();
