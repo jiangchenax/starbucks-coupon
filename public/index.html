@@ -92,7 +92,7 @@
 
             <div class="mt-4 flex gap-2">
                 <button onclick="closeQr()" class="flex-1 py-2 text-xs border rounded-full text-gray-600 hover:bg-gray-50">取消</button>
-                <button id="manual-confirm-btn" onclick="forceConfirm()" class="flex-1 py-2 text-xs bg-red-500 text-white rounded-full font-medium hover:bg-red-600">完成扫码</button>
+                <p id="qr-status-text" class="text-xs text-gray-500 mt-3">请用星巴克 App 扫码</p>
             </div>
         </div>
     </div>
@@ -190,24 +190,24 @@
 
         function startPoll() {
             if (pollTimer) clearInterval(pollTimer);
+            const tip = document.getElementById('qr-status-text');
             pollTimer = setInterval(async () => {
                 try {
                     const r = await fetch('/api/qrcode/status').then(res => res.json());
+                    if (tip) {
+                        if (r.status === 'waiting') tip.textContent = '请用星巴克 App 扫码';
+                        if (r.status === 'scanned') tip.textContent = '已扫码，请在手机上点确认';
+                        if (r.status === 'expired') tip.textContent = '二维码已过期，请关闭后重开';
+                        if (r.error) tip.textContent = r.error;
+                    }
                     if (r.status === 'confirmed') {
                         clearInterval(pollTimer);
                         closeQr();
-                        showToast('登录成功，已同步卡券');
+                        showToast('登录成功，正在读取券码');
                         init();
                     }
                 } catch (e) {}
             }, 2000);
-        }
-
-        async function forceConfirm() {
-            await fetch('/api/qrcode/confirm', { method: 'POST' });
-            closeQr();
-            showToast('同步成功');
-            init();
         }
 
         async function logout() {
