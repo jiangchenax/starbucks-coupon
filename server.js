@@ -62,6 +62,7 @@ async function bff(method, path, headers = {}, body = null) {
 // ======================= 页面 =======================
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+app.get('/scan', (req, res) => res.sendFile(path.join(__dirname, 'public', 'scan.html')));
 
 // ======================= 健康检查 =======================
 app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
@@ -91,8 +92,9 @@ app.post('/api/qrcode/seed', async (req, res) => {
       req.session.qrCreatedAt = Date.now();
       req.session.qrPhase = 'official';
 
-      // 官网账户页扫码登录 URL。seed 必须来自 profile.starbucks.com.cn
-      const qrUrl = `https://www.starbucks.com.cn/account/#/?seed=${encodeURIComponent(realSeed)}`;
+      // 指向本站扫码页，App 打开后由本站用官方 seed 轮询授权
+      const publicBase = process.env.PUBLIC_BASE_URL || 'https://starbucks.mossao.com';
+      const qrUrl = `${publicBase}/scan?seed=${encodeURIComponent(realSeed)}`;
       const qrImage = await qrcode.toDataURL(qrUrl, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
 
       return res.json({
@@ -163,7 +165,9 @@ app.get('/api/qrcode/status', async (req, res) => {
 
 // ======================= 确认登录 =======================
 app.post('/api/qrcode/confirm', async (req, res) => {
-  if (!req.session.qrSeedToken && !req.session.qrSeedLocal) {
+  const seed = req.body?.seed || req.session.qrRealSeed || req.session.qrSeedToken || req.session.qrSeedLocal;
+  if (seed) req.session.qrRealSeed = seed;
+  if (!seed) {
     return res.json({ success: false, message: '无有效二维码' });
   }
 

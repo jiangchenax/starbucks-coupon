@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>确认登录</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-6">
+  <div class="bg-white rounded-3xl shadow p-8 max-w-sm w-full text-center">
+    <div class="w-16 h-16 mx-auto bg-green-600 text-white rounded-2xl flex items-center justify-center text-2xl font-bold mb-4">星</div>
+    <h1 class="text-xl font-bold mb-2">确认登录星巴克卡券中心</h1>
+    <p id="msg" class="text-sm text-gray-500 mb-6">正在等待星巴克确认扫码…</p>
+    <button onclick="confirmLogin()" class="w-full bg-green-600 text-white py-3 rounded-2xl font-medium">我已在 App 确认</button>
+  </div>
+<script>
+const seed = new URLSearchParams(location.search).get('seed') || '';
+async function poll() {
+  if (!seed) { document.getElementById('msg').textContent = '缺少 seed'; return; }
+  try {
+    const r = await fetch('/api/qrcode/status?seed=' + encodeURIComponent(seed));
+    const data = await r.json();
+    if (data.status === 'confirmed' || data.status === 'authorized') {
+      document.getElementById('msg').textContent = '登录成功，可返回电脑查看卡券';
+      return;
+    }
+    if (data.status === 'scanned') document.getElementById('msg').textContent = '已扫码，请在 App 内确认';
+  } catch (_) {}
+  setTimeout(poll, 2000);
+}
+async function confirmLogin() {
+  await fetch('/api/qrcode/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seed })
+  });
+  document.getElementById('msg').textContent = '已提交确认，请返回电脑刷新';
+}
+poll();
+</script>
+</body>
+</html>
