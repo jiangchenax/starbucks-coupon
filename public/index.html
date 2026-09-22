@@ -170,17 +170,23 @@
 
         async function openQr() {
             document.getElementById('qr-modal').classList.remove('hidden');
-            document.getElementById('qr-loading').classList.remove('hidden');
-            try {
-                const res = await fetch('/api/qrcode/seed', { method: 'POST' }).then(r => r.json());
-                if (res.qrImage) {
-                    document.getElementById('qr-img').src = res.qrImage;
-                    document.getElementById('qr-loading').classList.add('hidden');
-                    startPoll();
-                }
-            } catch (e) {
-                showToast('生成二维码失败');
+            document.getElementById('qr-loading').classList.add('hidden');
+            const box = document.getElementById('qr-status-text');
+            if (box) box.innerHTML = '服务器访问不了官网。请在电脑打开 <a class="text-red-500" href="https://www.starbucks.com.cn/account/#/" target="_blank">星巴克登录页</a>，用微信扫它的码，把识别出的 seed 粘贴到下面。';
+            if (!document.getElementById('seed-input')) {
+                const wrap = document.createElement('div');
+                wrap.className = 'mt-3';
+                wrap.innerHTML = '<input id="seed-input" class="w-full border rounded-xl p-2 text-xs" placeholder="粘贴 seed"><button id="seed-go" class="mt-2 w-full bg-red-500 text-white text-xs py-2 rounded-full">开始同步</button>';
+                box.parentNode.appendChild(wrap);
+                document.getElementById('seed-go').onclick = submitSeed;
             }
+        }
+
+        async function submitSeed() {
+            const seed = document.getElementById('seed-input').value.trim();
+            if (!seed) return;
+            await fetch('/api/qrcode/use', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed }) });
+            startPoll();
         }
 
         function closeQr() {

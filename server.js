@@ -68,6 +68,16 @@ app.get('/scan', (req, res) => res.sendFile(path.join(__dirname, 'public', 'scan
 // ======================= 健康检查 =======================
 app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
+app.post('/api/qrcode/use', (req, res) => {
+  const seed = String(req.body?.seed || '').trim();
+  if (!seed) return res.status(400).json({ success: false, message: '缺少 seed' });
+  req.session.qrRealSeed = seed;
+  req.session.qrPhase = 'official';
+  req.session.qrCreatedAt = Date.now();
+  console.log('[QR] use seed', seed);
+  res.json({ success: true });
+});
+
 // ======================= [真·官方协议] 获取 QR Seed =======================
 // 来源：真实抓包 https://profile.starbucks.com.cn/api/qrcode/seed
 const sessions = new Map();
