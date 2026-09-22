@@ -91,8 +91,8 @@ app.post('/api/qrcode/seed', async (req, res) => {
       req.session.qrCreatedAt = Date.now();
       req.session.qrPhase = 'official';
 
-      // 包装为官网扫码登录 URL，App 扫码器才能识别并拉起授权
-      const qrUrl = `https://www.starbucks.com.cn/account/login?seed=${realSeed}`;
+      // 官网账户页扫码登录 URL。seed 必须来自 profile.starbucks.com.cn
+      const qrUrl = `https://www.starbucks.com.cn/account/#/?seed=${encodeURIComponent(realSeed)}`;
       const qrImage = await qrcode.toDataURL(qrUrl, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
 
       return res.json({
