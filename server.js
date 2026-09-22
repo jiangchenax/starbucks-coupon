@@ -136,10 +136,25 @@ app.get('/api/qrcode/status', async (req, res) => {
 
       // 80032 waiting, 80033 scanned, 80035 expired, token 出现即授权成功
       if (data.token) {
+        const oauth = await axios.post('https://bff.starbucks.com.cn/web/login/oauth/access_token', {
+          code: data.token,
+          remember_me: false,
+          grant_type: 'authorization_code'
+        }, {
+          headers: {
+            'x-msr-version': '2',
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Origin: 'https://www.starbucks.com.cn',
+            Referer: 'https://www.starbucks.com.cn/'
+          },
+          timeout: 15000
+        }).catch(e => ({ data: e.response?.data || { error: e.message } }));
+        const access = oauth.data?.access_token || oauth.data?.token || data.token;
         req.session.isLoggedIn = true;
-        req.session.bffToken = data.token;
+        req.session.bffToken = access;
         req.session.user = { id: 'qr', name: '扫码用户', level: '会员' };
-        return res.json({ status: 'confirmed', token: data.token });
+        return res.json({ status: 'confirmed' });
       }
       if (data.code === 80033) return res.json({ status: 'scanned' });
       if (data.code === 80035) return res.json({ status: 'expired' });
