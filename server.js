@@ -1,5 +1,6 @@
 try { require('dotenv').config(); } catch (_) {}
 const express = require('express');
+const puppeteer = require('puppeteer');
 const cors = require('cors');
 const session = require('express-session');
 const axios = require('axios');
@@ -69,9 +70,49 @@ app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }
 
 // ======================= [真·官方协议] 获取 QR Seed =======================
 // 来源：真实抓包 https://profile.starbucks.com.cn/api/qrcode/seed
+async function browserSeed() {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const hit = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('seed timeout')), 25000);
+      page.on('response', async (resp) => {
+        if (!resp.url().includes('/api/qrcode/seed')) return;
+        try {
+          const data = await resp.json();
+          if (data.seed) {
+            clearTimeout(timer);
+            resolve(data.seed);
+          }
+        } catch (_) {}
+      });
+    });
+    await page.goto('https://www.starbucks.com.cn/account/', { waitUntil: 'networkidle2', timeout: 30000 });
+    return await hit;
+  } finally {
+    await browser.close();
+  }
+}
+
 app.post('/api/qrcode/seed', async (req, res) => {
   try {
-    console.log('[QR] 正在请求星巴克官方 profile 服务获取真实 seed...');
+    console.log('[QR] 浏览器自动获取官方 seed...');
+    const realSeed = await browserSeed();
+    console.log('[QR] seed', realSeed);
+    req.session.qrRealSeed = realSeed;
+    req.session.qrCreatedAt = Date.now();
+    req.session.qrPhase = 'official';
+    const qrImage = await qrcode.toDataURL(realSeed, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
+    return res.json({ success: true, qrImage, seed: realSeed, mode: 'browser' });
+  } catch (e) {
+    console.error('[QR] browser', e.message);
+  }
+  try {
+    console.log('[QR] 回退直接请求 seed...');
     const smToken = process.env.SM_TOKEN || '';
     const response = await axios.get('https://profile.starbucks.com.cn/api/qrcode/seed', {
       headers: {
