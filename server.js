@@ -87,8 +87,16 @@ async function browserSeed() {
       if (data.seed) seed = data.seed;
     } catch (_) {}
   });
-  await page.goto('https://www.starbucks.com.cn/account/', { waitUntil: 'networkidle2', timeout: 40000 });
-  for (let i = 0; i < 20 && !seed; i++) await new Promise(r => setTimeout(r, 500));
+  await page.goto('https://www.starbucks.com.cn/account/#/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+  await new Promise(r => setTimeout(r, 5000));
+  const clicked = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('button, a, div, span')];
+    const hit = nodes.find(n => /扫码|二维码/.test(n.innerText || ''));
+    if (hit) { hit.click(); return hit.innerText.slice(0, 20); }
+    return '';
+  }).catch(() => '');
+  console.log('[QR] page', page.url(), 'click', clicked || 'none');
+  for (let i = 0; i < 30 && !seed; i++) await new Promise(r => setTimeout(r, 500));
   if (!seed) {
     await browser.close();
     throw new Error('no seed');
