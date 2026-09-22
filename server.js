@@ -91,13 +91,15 @@ app.post('/api/qrcode/seed', async (req, res) => {
       req.session.qrCreatedAt = Date.now();
       req.session.qrPhase = 'official';
 
-      // 官方二维码实际就是 seed 字符串（星巴克 App 扫描后会直接拿内容请求官方验证）
-      const qrImage = await qrcode.toDataURL(realSeed, { width: 300, margin: 2 });
+      // 包装为官网扫码登录 URL，App 扫码器才能识别并拉起授权
+      const qrUrl = `https://www.starbucks.com.cn/account/login?seed=${realSeed}`;
+      const qrImage = await qrcode.toDataURL(qrUrl, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
 
       return res.json({
         success: true,
         qrImage,
         seed: realSeed,
+        qrUrl,
         mode: 'official'
       });
     }
@@ -109,7 +111,7 @@ app.post('/api/qrcode/seed', async (req, res) => {
   const localSeed = uuidv4();
   req.session.qrSeedLocal = localSeed;
   req.session.qrPhase = 'local';
-  const qrImage = await qrcode.toDataURL(localSeed, { width: 300, margin: 2 });
+  const qrImage = await qrcode.toDataURL(`https://www.starbucks.com.cn/account/login?seed=${localSeed}`, { width: 300, margin: 2 });
   res.json({ success: true, qrImage, mode: 'local' });
 });
 
