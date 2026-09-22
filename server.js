@@ -166,7 +166,8 @@ app.get('/api/qrcode/status', async (req, res) => {
         req.session.isLoggedIn = true;
         req.session.user = { id: 'qr', name: '扫码用户', level: '会员' };
         req.session.qrPhase = 'done';
-        return res.json({ status: 'confirmed' });
+        req.session.coupons = await loadCoupons(req.session.bffToken);
+        return res.json({ status: 'confirmed', count: req.session.coupons.length });
       }
       if (req.session.qrPhase === 'done') return res.json({ status: 'confirmed' });
       if (data.code === 80033) return res.json({ status: 'scanned' });
@@ -242,8 +243,54 @@ app.get('/api/accounts', (req, res) => {
   });
 });
 
+async function loadCoupons(token) {
+  const smToken = process.env.SM_TOKEN || '';
+  const headers = {
+    'x-msr-version': '2',
+    Accept: 'application/json',
+    Origin: 'https://www.starbucks.com.cn',
+    Referer: 'https://www.starbucks.com.cn/',
+    ...(smToken ? { 'Sm-Token': smToken } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+  const urls = [
+    'https://profile.starbucks.com.cn/api/Customers/rewards?status=active&pageNum=1&pageSize=50',
+    'https://bff.starbucks.com.cn/common-api/v1/coupons?lang=CHS&channel=ALL'
+  ];
+  for (const url of urls) {
+    try {
+      const r = await axios.get(url, { headers, timeout: 25000 });
+      const raw = r.data?.data || r.data?.rewards || r.data?.coupons || r.data || [];
+      const list = Array.isArray(raw) ? raw : [];
+      console.log('[Coupons]', url, list.length, JSON.stringify(r.data).slice(0, 300));
+      if (list.length || r.data) {
+        return list.map(c => ({
+          no: c.couponNo || c.benefitId || c.id || c.voucherNum || '',
+          code: c.code || c.couponCode || c.poskey || c.formattedPoskey || '',
+          name: c.title || c.name || c.benefitName || '好礼券',
+          expire: c.expiryDate || c.expireDate || c.validEndTime || '',
+          type: c.status || c.type || '好礼券'
+        }));
+      }
+    } catch (e) {
+      console.error('[Coupons]', url, e.response?.status || e.message, JSON.stringify(e.response?.data || '').slice(0, 200));
+    }
+  }
+  return [];
+}
+
 // ======================= 获取卡券列表 =======================
 app.get('/api/coupons', async (req, res) => {
+  if (!req.session.isLoggedIn) return res.json({ success: false, message: '未登录', coupons: [] });
+  if (Array.isArray(req.session.coupons) && req.session.coupons.length) {
+    return res.json({ success: true, coupons: req.session.coupons });
+  }
+  const coupons = await loadCoupons(req.session.bffToken);
+  req.session.coupons = coupons;
+  return res.json({ success: true, coupons });
+});
+
+app.get('/api/coupons-disabled', async (req, res) => {
   if (!req.session.isLoggedIn) return res.json({ success: false, message: '未登录', coupons: [] });
 
   try {
