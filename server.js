@@ -253,36 +253,28 @@ app.get('/api/accounts', (req, res) => {
 app.get('/api/coupons', async (req, res) => {
   if (!req.session.isLoggedIn) return res.json({ success: false, message: '未登录', coupons: [] });
 
-  // 真实模式：调用星巴克 BFF 获取真实卡券
   if (req.session.bffToken && !req.session.bffToken.startsWith('sbux_jwt_')) {
-    const r = await bff('GET', '/common-api/v1/coupons', {
+    console.log('[Coupons] 使用真实 Token 拉取卡券...');
+    const r = await bff('GET', '/common-api/v1/coupons?lang=CHS', {
       Authorization: `Bearer ${req.session.bffToken}`
     });
     if (r.ok) {
-      const coupons = (r.data?.coupons || r.data?.data || r.data || []).map(c => ({
+      const raw = r.data?.coupons || r.data?.data || r.data || [];
+      const coupons = (Array.isArray(raw) ? raw : []).map(c => ({
         no: c.couponNo || c.id || c.coupon_number || '',
         code: c.code || c.registrationCode || '',
-        name: c.name || c.title || c.couponName || '',
-        expire: c.expireDate || c.expire || c.endDate || '',
-        type: c.type || c.category || '',
-        status: c.status || 'valid'
+        name: c.name || c.title || c.couponName || c.description || '',
+        expire: c.expireDate || c.expire || c.endDate || c.validEndDate || '',
+        type: c.type || c.category || c.couponType || '',
+        status: c.status || c.state || 'valid'
       }));
-      return res.json({ success: true, coupons });
+      console.log(`[Coupons] 成功拉取 ${coupons.length} 张卡券`);
+      return res.json({ success: true, source: 'bff', coupons });
     }
+    console.error('[Coupons] BFF 返回错误:', JSON.stringify(r.error).slice(0, 300));
   }
 
-  // 真实 BFF 不可用时的本地数据
-  res.json({
-    success: true,
-    source: 'demo',
-    coupons: [
-      { no: '20010012345678901', code: 'WELCOME2026', name: '免费升杯券',   expire: '2026-12-31' },
-      { no: '20020023456789012', code: 'BRAVO2026',   name: '买一赠一券',   expire: '2026-11-15' },
-      { no: '20030034567890123', code: 'HOLIDAY26',   name: '糕点半价券',   expire: '2026-10-31' },
-      { no: '20040045678901234', code: 'FREESHIP26',  name: '免运费券',     expire: '2026-12-01' },
-      { no: '20050056789012345', code: 'GIFTCARD26',  name: '星礼卡优惠',   expire: '2026-09-30' }
-    ]
-  });
+  res.json({ success: true, source: 'demo', coupons: [] });
 });
 
 // ======================= 登出 =======================
@@ -305,26 +297,34 @@ app.post('/api/login/real', async (req, res) => {
   const { phone, password } = req.body;
   if (!phone || !password) return res.json({ success: false, message: '请输入手机号和密码' });
 
+  console.log('[Login] 正在登录...');
   const r = await bff('POST', '/app-bff-api/login', {}, {
     loginType: 'BASIC',
     userName: phone,
     password,
-    device: {
-      deviceId: uuidv4(),
-      deviceType: 'android',
-      model: 'SM-S9080',
-      osVersion: 'Android 14',
-      appVersion: '10.26.2'
-    }
+    device: { deviceId: uuidv4(), deviceType: 'android', model: 'SM-S9080', osVersion: 'Android 14', appVersion: '10.26.2' }
   });
 
   if (r.ok && r.data?.access_token) {
     req.session.bffToken = r.data.access_token;
     req.session.isLoggedIn = true;
-    req.session.user = { id: phone, name: phone, level: '会员' };
-    return res.json({ success: true, message: '登录成功' });
+    // 拉用户信息
+    const info = await bff('POST', '/app-bff-api/auth/v2/user/detail', { Authorization: `Bearer ${r.data.access_token}` });
+    if (info.ok && info.data) {
+      req.session.user = {
+        id: info.data.userName || phone,
+        name: info.data.firstName || info.data.nickName || phone,
+        level: (info.data.loyaltyTier || {}).userLevel || '会员',
+        phone: info.data.cellPhone || phone
+      };
+    } else {
+      req.session.user = { id: phone, name: phone, level: '会员' };
+    }
+    console.log('[Login] 登录成功, 用户:', req.session.user.name);
+    return res.json({ success: true, message: '登录成功', user: req.session.user });
   }
-  res.json({ success: false, message: r.error?.message || '登录失败', detail: r.error });
+  console.error('[Login] 失败:', JSON.stringify(r.error).slice(0, 300));
+  res.json({ success: false, message: '登录失败', detail: r.error });
 });
 
 // ======================= 管理后台 =======================
