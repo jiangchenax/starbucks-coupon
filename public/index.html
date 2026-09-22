@@ -172,7 +172,7 @@
             document.getElementById('qr-modal').classList.remove('hidden');
             document.getElementById('qr-loading').classList.remove('hidden');
             try {
-                const res = await fetch('/api/qrcode/generate', { method: 'POST' }).then(r => r.json());
+                const res = await fetch('/api/qrcode/seed', { method: 'POST' }).then(r => r.json());
                 if (res.qrImage) {
                     document.getElementById('qr-img').src = res.qrImage;
                     document.getElementById('qr-loading').classList.add('hidden');
