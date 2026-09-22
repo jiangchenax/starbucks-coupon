@@ -72,6 +72,7 @@ app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }
 app.post('/api/qrcode/seed', async (req, res) => {
   try {
     console.log('[QR] 正在请求星巴克官方 profile 服务获取真实 seed...');
+    const smToken = process.env.SM_TOKEN || '';
     const response = await axios.get('https://profile.starbucks.com.cn/api/qrcode/seed', {
       headers: {
         'Host': 'profile.starbucks.com.cn',
@@ -79,7 +80,8 @@ app.post('/api/qrcode/seed', async (req, res) => {
         'Accept': 'application/json',
         'Origin': 'https://www.starbucks.com.cn',
         'Referer': 'https://www.starbucks.com.cn/',
-        'x-msr-version': '2'
+        'x-msr-version': '2',
+        ...(smToken ? { 'Sm-Token': smToken } : {})
       },
       timeout: 10000
     });
@@ -119,6 +121,7 @@ app.post('/api/qrcode/seed', async (req, res) => {
 app.get('/api/qrcode/status', async (req, res) => {
   if (req.session.qrPhase === 'official' && req.session.qrRealSeed) {
     try {
+      const smToken = process.env.SM_TOKEN || '';
       const pingRes = await axios.get(`https://profile.starbucks.com.cn/api/qrcode/ping?seed=${req.session.qrRealSeed}`, {
         headers: {
           'Host': 'profile.starbucks.com.cn',
@@ -126,7 +129,8 @@ app.get('/api/qrcode/status', async (req, res) => {
           'Accept': 'application/json',
           'Origin': 'https://www.starbucks.com.cn',
           'Referer': 'https://www.starbucks.com.cn/',
-          'x-msr-version': '2'
+          'x-msr-version': '2',
+          ...(smToken ? { 'Sm-Token': smToken } : {})
         },
         timeout: 10000
       });
