@@ -184,8 +184,12 @@
 
         async function submitSeed() {
             const seed = document.getElementById('seed-input').value.trim();
+            const tip = document.getElementById('qr-status-text');
             if (!seed) return;
-            await fetch('/api/qrcode/use', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed }) });
+            tip.textContent = '正在提交 seed...';
+            const res = await fetch('/api/qrcode/use', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed }) }).then(r => r.json()).catch(() => null);
+            if (!res || !res.success) { tip.textContent = '提交失败'; return; }
+            tip.textContent = '已开始同步。现在用星巴克 App 扫官网那张码并确认';
             startPoll();
         }
 
