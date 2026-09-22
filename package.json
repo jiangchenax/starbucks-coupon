@@ -1,0 +1,18 @@
+{
+  "name": "starbucks-coupon-manager",
+  "version": "1.0.0",
+  "description": "星巴克卡券管理中心 - 复刻 youzan.tech",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "qrcode": "^1.5.3",
+    "uuid": "^9.0.0"
+  }
+}

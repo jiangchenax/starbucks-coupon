@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>有赞商城 · 会员卡券中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f7f8fa; }
+        .card-shadow { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .qr-anim { position: relative; overflow: hidden; }
+        .qr-anim::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, #ee0a24, transparent);
+            animation: scan 2s ease-in-out infinite;
+        }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; }
+    </style>
+</head>
+<body class="min-h-screen pb-24 text-gray-800">
+    <div id="toast" class="toast hidden bg-black/80 text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-lg transition-all"></div>
+
+    <div class="max-w-md mx-auto min-h-screen bg-white shadow-sm flex flex-col">
+        <!-- Top Nav -->
+        <div class="sticky top-0 z-30 bg-white border-b px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-red-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">赞</div>
+                <span class="font-bold text-base text-gray-900">会员卡券中心</span>
+            </div>
+            <a href="/admin" class="text-gray-400 hover:text-gray-600 text-sm">
+                <i class="fa-solid fa-sliders"></i> 设置
+            </a>
+        </div>
+
+        <div class="p-4 flex-1 space-y-5">
+            <!-- Account Cards -->
+            <div id="accounts-container" class="space-y-3"></div>
+
+            <!-- Coupons Section -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="font-bold text-gray-900 text-base">全部卡券汇总</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">默认折叠，点击展开查看每张券码与到期时间</p>
+                    </div>
+                    <button id="copy-btn" onclick="copyAll()" disabled class="text-xs bg-red-500 hover:bg-red-600 disabled:bg-gray-200 disabled:text-gray-400 text-white px-3 py-1.5 rounded-full font-medium transition">
+                        复制全部卡券
+                    </button>
+                </div>
+
+                <div id="empty-box" class="text-center py-16 px-4">
+                    <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl text-gray-300">
+                        <i class="fa-solid fa-ticket"></i>
+                    </div>
+                    <p class="text-sm text-gray-500 font-medium">还没有添加任何账号</p>
+                    <p class="text-xs text-gray-400 mt-1">点击下方按钮，用星巴克 App 扫码即可同步全部电子代金券</p>
+                </div>
+
+                <div id="coupons-list" class="space-y-2.5 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t p-3 z-20">
+            <button onclick="openQr()" class="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-3 rounded-full text-sm shadow-md transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus"></i> 添加账号
+            </button>
+        </div>
+    </div>
+
+    <!-- QR Modal -->
+    <div id="qr-modal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl w-full max-w-xs p-5 text-center relative">
+            <h3 class="font-bold text-gray-900 text-base mb-1">使用星巴克 App 扫码登录</h3>
+            <p class="text-xs text-gray-400 mb-4">扫码后在 App 确认授权以同步卡券</p>
+
+            <div class="w-56 h-56 mx-auto bg-gray-50 border rounded-xl p-2 relative flex items-center justify-center qr-anim">
+                <img id="qr-img" src="" class="w-full h-full object-contain">
+                <div id="qr-loading" class="absolute inset-0 bg-white/90 flex flex-col items-center justify-center">
+                    <div class="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-xs text-gray-500 mt-2">正在获取二维码...</span>
+                </div>
+            </div>
+
+            <div class="text-left text-xs text-gray-500 mt-4 space-y-1 bg-gray-50 p-3 rounded-lg">
+                <p>1. 打开 <b>星巴克 App</b></p>
+                <p>2. 点击「我的 → 扫一扫」</p>
+                <p>3. 扫描上方二维码并确认登录</p>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <button onclick="closeQr()" class="flex-1 py-2 text-xs border rounded-full text-gray-600 hover:bg-gray-50">取消</button>
+                <button id="manual-confirm-btn" onclick="forceConfirm()" class="flex-1 py-2 text-xs bg-red-500 text-white rounded-full font-medium hover:bg-red-600">完成扫码</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let accounts = [];
+        let coupons = [];
+        let pollTimer = null;
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.remove('hidden');
+            setTimeout(() => t.classList.add('hidden'), 2000);
+        }
+
+        async function init() {
+            try {
+                const s = await fetch('/api/status').then(r => r.json());
+                if (s.isLoggedIn) {
+                    const accs = await fetch('/api/accounts').then(r => r.json());
+                    accounts = accs.accounts || [];
+                    const c = await fetch('/api/coupons').then(r => r.json());
+                    coupons = c.coupons || [];
+                }
+            } catch (e) {}
+            render();
+        }
+
+        function render() {
+            const accEl = document.getElementById('accounts-container');
+            const listEl = document.getElementById('coupons-list');
+            const emptyEl = document.getElementById('empty-box');
+            const copyBtn = document.getElementById('copy-btn');
+
+            if (accounts.length === 0) {
+                accEl.innerHTML = '';
+                listEl.classList.add('hidden');
+                emptyEl.classList.remove('hidden');
+                copyBtn.disabled = true;
+                return;
+            }
+
+            emptyEl.classList.add('hidden');
+            listEl.classList.remove('hidden');
+            copyBtn.disabled = coupons.length === 0;
+
+            accEl.innerHTML = accounts.map(a => `
+                <div class="bg-gray-50 rounded-xl p-3 flex items-center justify-between border">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">星</div>
+                        <div>
+                            <div class="font-medium text-xs text-gray-800">${a.name || '星巴克账号'}</div>
+                            <div class="text-[10px] text-gray-400">${a.level || '会员'} · ${coupons.length} 张可用券</div>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="text-xs text-red-500 hover:underline">退出</button>
+                </div>
+            `).join('');
+
+            listEl.innerHTML = coupons.map(c => `
+                <div class="border rounded-xl p-3 bg-white hover:border-red-200 transition cursor-pointer" onclick="copyCode('${c.no || c.code}')">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-semibold text-gray-900">${c.name || '星巴克电子代金券'}</span>
+                        <span class="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded font-medium">${c.type || '优惠券'}</span>
+                    </div>
+                    <div class="mt-2 text-xs font-mono text-gray-600 tracking-wider select-all">${c.no || c.code}</div>
+                    <div class="mt-1 text-[10px] text-gray-400 flex justify-between">
+                        <span>券码: ${c.code || '-'}</span>
+                        <span>有效期至 ${c.expire || '-'}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function openQr() {
+            document.getElementById('qr-modal').classList.remove('hidden');
+            document.getElementById('qr-loading').classList.remove('hidden');
+            try {
+                const res = await fetch('/api/qrcode/generate', { method: 'POST' }).then(r => r.json());
+                if (res.qrImage) {
+                    document.getElementById('qr-img').src = res.qrImage;
+                    document.getElementById('qr-loading').classList.add('hidden');
+                    startPoll();
+                }
+            } catch (e) {
+                showToast('生成二维码失败');
+            }
+        }
+
+        function closeQr() {
+            document.getElementById('qr-modal').classList.add('hidden');
+            if (pollTimer) clearInterval(pollTimer);
+        }
+
+        function startPoll() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(async () => {
+                try {
+                    const r = await fetch('/api/qrcode/status').then(res => res.json());
+                    if (r.status === 'confirmed') {
+                        clearInterval(pollTimer);
+                        closeQr();
+                        showToast('登录成功，已同步卡券');
+                        init();
+                    }
+                } catch (e) {}
+            }, 2000);
+        }
+
+        async function forceConfirm() {
+            await fetch('/api/qrcode/confirm', { method: 'POST' });
+            closeQr();
+            showToast('同步成功');
+            init();
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            accounts = [];
+            coupons = [];
+            render();
+            showToast('已退出账号');
+        }
+
+        function copyCode(str) {
+            navigator.clipboard.writeText(str);
+            showToast('已复制券码');
+        }
+
+        function copyAll() {
+            if (!coupons.length) return;
+            const text = coupons.map(c => `${c.name || '代金券'}\t${c.no || ''}\t${c.code || ''}\t${c.expire || ''}`).join('\n');
+            navigator.clipboard.writeText(text);
+            showToast(`已复制全部 ${coupons.length} 张卡券`);
+        }
+
+        init();
+    </script>
+</body>
+</html>

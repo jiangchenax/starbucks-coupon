@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 · 星巴克卡券中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800 p-4">
+    <div class="max-w-md mx-auto space-y-4">
+        <div class="flex items-center justify-between py-2">
+            <h1 class="font-bold text-lg text-gray-900">系统配置与控制台</h1>
+            <a href="/" class="text-xs text-red-500 hover:underline">返回卡券中心</a>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 shadow-sm border space-y-3">
+            <h2 class="text-sm font-semibold text-gray-700">真实账号登录 (换取真实 Token)</h2>
+            <p class="text-xs text-gray-400">调用官方 BFF 登录接口直接拉取线上卡券</p>
+            <input id="real-phone" type="text" placeholder="星巴克注册手机号" class="w-full border rounded-lg p-2 text-xs">
+            <input id="real-pwd" type="password" placeholder="星巴克账号密码" class="w-full border rounded-lg p-2 text-xs">
+            <button onclick="realLogin()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2 rounded-lg font-medium transition">
+                直接登录并绑定
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 shadow-sm border space-y-3">
+            <h2 class="text-sm font-semibold text-gray-700">手动注入 Token / 环境变量</h2>
+            <textarea id="manual-token" rows="3" placeholder="如有抓包得到的 Bearer Token 直接粘贴在此" class="w-full border rounded-lg p-2 text-xs font-mono"></textarea>
+            <button onclick="saveToken()" class="w-full bg-gray-800 hover:bg-gray-900 text-white text-xs py-2 rounded-lg font-medium transition">
+                保存 Token
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 shadow-sm border text-xs space-y-2">
+            <h2 class="text-sm font-semibold text-gray-700">服务状态</h2>
+            <div class="flex justify-between text-gray-500"><span>目标网关:</span><span class="font-mono">bff.starbucks.com.cn</span></div>
+            <div class="flex justify-between text-gray-500"><span>服务端口:</span><span class="font-mono" id="port-val">3456</span></div>
+            <div id="status-out" class="p-2 bg-gray-50 rounded text-[11px] font-mono text-gray-600 break-all">加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status').then(r => r.json());
+                document.getElementById('status-out').innerText = JSON.stringify(res, null, 2);
+            } catch (e) {
+                document.getElementById('status-out').innerText = '获取状态异常: ' + e.message;
+            }
+        }
+
+        async function realLogin() {
+            const phone = document.getElementById('real-phone').value;
+            const password = document.getElementById('real-pwd').value;
+            if (!phone || !password) return alert('请输入完整');
+            const res = await fetch('/api/login/real', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, password })
+            }).then(r => r.json());
+            alert(res.message || (res.success ? '成功' : '失败'));
+            fetchStatus();
+        }
+
+        async function saveToken() {
+            const token = document.getElementById('manual-token').value.trim();
+            if (!token) return alert('Token 为空');
+            const res = await fetch('/api/admin/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            }).then(r => r.json());
+            alert(res.message || '已保存');
+            fetchStatus();
+        }
+
+        fetchStatus();
+    </script>
+</body>
+</html>
