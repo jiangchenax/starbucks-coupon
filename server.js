@@ -246,28 +246,35 @@ app.get('/api/accounts', (req, res) => {
 app.get('/api/coupons', async (req, res) => {
   if (!req.session.isLoggedIn) return res.json({ success: false, message: '未登录', coupons: [] });
 
-  if (req.session.bffToken && !req.session.bffToken.startsWith('sbux_jwt_')) {
-    console.log('[Coupons] 使用真实 Token 拉取卡券...');
-    const r = await bff('GET', '/common-api/v1/coupons?lang=CHS', {
-      Authorization: `Bearer ${req.session.bffToken}`
+  try {
+    const smToken = process.env.SM_TOKEN || '';
+    const r = await axios.get('https://profile.starbucks.com.cn/api/Customers/rewards?status=active&pageNum=1&pageSize=50', {
+      headers: {
+        'x-msr-version': '2',
+        'X-API-Version': '2',
+        Accept: 'application/json',
+        Origin: 'https://www.starbucks.com.cn',
+        Referer: 'https://www.starbucks.com.cn/',
+        ...(smToken ? { 'Sm-Token': smToken } : {}),
+        ...(req.session.bffToken ? { Authorization: `Bearer ${req.session.bffToken}` } : {})
+      },
+      timeout: 15000
     });
-    if (r.ok) {
-      const raw = r.data?.coupons || r.data?.data || r.data || [];
-      const coupons = (Array.isArray(raw) ? raw : []).map(c => ({
-        no: c.couponNo || c.id || c.coupon_number || '',
-        code: c.code || c.registrationCode || '',
-        name: c.name || c.title || c.couponName || c.description || '',
-        expire: c.expireDate || c.expire || c.endDate || c.validEndDate || '',
-        type: c.type || c.category || c.couponType || '',
-        status: c.status || c.state || 'valid'
-      }));
-      console.log(`[Coupons] 成功拉取 ${coupons.length} 张卡券`);
-      return res.json({ success: true, source: 'bff', coupons });
-    }
-    console.error('[Coupons] BFF 返回错误:', JSON.stringify(r.error).slice(0, 300));
+    const raw = r.data?.data || r.data?.rewards || r.data || [];
+    const list = Array.isArray(raw) ? raw : [];
+    const coupons = list.map(c => ({
+      no: c.couponNo || c.benefitId || c.id || c.voucherNum || '',
+      code: c.code || c.couponCode || c.poskey || c.formattedPoskey || '',
+      name: c.title || c.name || c.benefitName || c.description || '好礼券',
+      expire: c.expiryDate || c.expireDate || c.validEndTime || '',
+      type: c.status || c.type || '好礼券'
+    }));
+    console.log('[Coupons]', coupons.length, JSON.stringify(r.data).slice(0, 400));
+    return res.json({ success: true, source: 'profile', coupons, raw: r.data });
+  } catch (e) {
+    console.error('[Coupons]', e.response?.status, JSON.stringify(e.response?.data || e.message).slice(0, 400));
+    return res.json({ success: false, coupons: [], error: e.response?.data || e.message });
   }
-
-  res.json({ success: true, source: 'demo', coupons: [] });
 });
 
 // ======================= 登出 =======================
