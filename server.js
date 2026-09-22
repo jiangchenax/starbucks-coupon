@@ -1,4 +1,4 @@
-require('dotenv').config();
+try { require('dotenv').config(); } catch (_) {}
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
