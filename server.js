@@ -66,129 +66,96 @@ app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'adm
 // ======================= 健康检查 =======================
 app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
-// ======================= [真] 获取 QR Seed =======================
-// 对应 App 内: /app-bff-api/auth/pay/getQrSeed
+// ======================= [真·官方协议] 获取 QR Seed =======================
+// 来源：真实抓包 https://profile.starbucks.com.cn/api/qrcode/seed
 app.post('/api/qrcode/seed', async (req, res) => {
-  const result = await bff('POST', '/app-bff-api/auth/pay/getQrSeed', {}, {
-    device: {
-      deviceId: uuidv4(),
-      deviceType: 'android',
-      model: 'SM-S9080',
-      osVersion: 'Android 14',
-      appVersion: '10.26.2'
-    }
-  });
-
-  if (result.ok) {
-    const { qrSeedToken, qrOpenId, seedExpireTime } = result.data;
-    // 保存到会话
-    req.session.qrSeedToken = qrSeedToken;
-    req.session.qrOpenId = qrOpenId;
-    req.session.qrSeedExpires = seedExpireTime || Date.now() + 300000;
-    req.session.qrPhase = 'generated';
-
-    // 生成二维码内容：DRQ|<openId>|<encryptedCode>
-    // 加密 code 由客户端 TOTP 算法生成 (Lyg/c + Lqh/c)
-    // 这里先用 seedToken 明文，若失败则需自行实现 TOTP
-    const qrContent = `DRQ|${qrOpenId}|${qrSeedToken}`;
-    const qrImage = await qrcode.toDataURL(qrContent, { width: 300, margin: 2 });
-
-    return res.json({
-      success: true,
-      qrImage,
-      qrOpenId,
-      expiresIn: Math.floor((req.session.qrSeedExpires - Date.now()) / 1000)
+  try {
+    console.log('[QR] 正在请求星巴克官方 profile 服务获取真实 seed...');
+    const response = await axios.get('https://profile.starbucks.com.cn/api/qrcode/seed', {
+      headers: {
+        'Host': 'profile.starbucks.com.cn',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Origin': 'https://www.starbucks.com.cn',
+        'Referer': 'https://www.starbucks.com.cn/',
+        'x-msr-version': '2'
+      },
+      timeout: 10000
     });
+
+    if (response.data && response.data.seed) {
+      const realSeed = response.data.seed;
+      console.log('[QR] 获取官方 seed 成功:', realSeed);
+      
+      req.session.qrRealSeed = realSeed;
+      req.session.qrCreatedAt = Date.now();
+      req.session.qrPhase = 'official';
+
+      // 官方二维码实际就是 seed 字符串（星巴克 App 扫描后会直接拿内容请求官方验证）
+      const qrImage = await qrcode.toDataURL(realSeed, { width: 300, margin: 2 });
+
+      return res.json({
+        success: true,
+        qrImage,
+        seed: realSeed,
+        mode: 'official'
+      });
+    }
+  } catch (e) {
+    console.error('[QR] 获取官方 seed 失败:', e.message);
   }
 
-  // 如果 getQrSeed 不可用，回退到本地 seed
+  // 回退降级方案
   const localSeed = uuidv4();
   req.session.qrSeedLocal = localSeed;
   req.session.qrPhase = 'local';
-  const qrImage = await qrcode.toDataURL(`SBUX_LOGIN|${localSeed}`, { width: 300, margin: 2 });
-  res.json({
-    success: true,
-    qrImage,
-    mode: 'local',
-    localSeed,
-    note: 'getQrSeed 暂时不可用，使用本地模式'
-  });
+  const qrImage = await qrcode.toDataURL(localSeed, { width: 300, margin: 2 });
+  res.json({ success: true, qrImage, mode: 'local' });
 });
 
-// ======================= [真] 轮询扫码状态 =======================
-// 对应 App 内: POST /app-bff-api/auth/login/qrcode/status
+// ======================= [真·官方协议] 轮询扫码状态 =======================
+// 来源：真实抓包 https://profile.starbucks.com.cn/api/qrcode/ping?seed=...
 app.get('/api/qrcode/status', async (req, res) => {
-  const phase = req.session.qrPhase;
+  if (req.session.qrPhase === 'official' && req.session.qrRealSeed) {
+    try {
+      const pingRes = await axios.get(`https://profile.starbucks.com.cn/api/qrcode/ping?seed=${req.session.qrRealSeed}`, {
+        headers: {
+          'Host': 'profile.starbucks.com.cn',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Origin': 'https://www.starbucks.com.cn',
+          'Referer': 'https://www.starbucks.com.cn/',
+          'x-msr-version': '2'
+        },
+        timeout: 10000
+      });
 
-  // 本地模式：模拟流程
-  if (phase === 'local') {
-    if (!req.session.qrSeedLocal) return res.json({ status: 'expired' });
-    const elapsed = Date.now() - (req.session.qrCreatedAt || Date.now());
-    if (elapsed > 300000) {
-      req.session.qrPhase = null;
-      return res.json({ status: 'expired' });
-    }
-    if (req.session.qrConfirmed) return res.json({ status: 'authorized' });
-    if (req.session.qrScanned) return res.json({ status: 'scanned' });
-    // 自动模拟扫码: 15s 后标记已扫码, 30s 后标记已确认
-    if (elapsed > 30000) {
-      req.session.qrScanned = true;
-      req.session.qrConfirmed = true;
-      req.session.qrPhase = 'authorized';
-      return res.json({ status: 'authorized', token: `sbux_${uuidv4()}` });
-    }
-    if (elapsed > 15000) {
-      req.session.qrScanned = true;
-      return res.json({ status: 'scanned' });
-    }
-    return res.json({ status: 'waiting' });
-  }
+      const data = pingRes.data;
+      console.log('[Ping]', data);
 
-  // 真实模式：轮询星巴克 API
-  if (!req.session.qrSeedToken) return res.json({ status: 'expired' });
-  if (Date.now() > req.session.qrSeedExpires) {
-    req.session.qrPhase = null;
-    return res.json({ status: 'expired' });
-  }
-
-  const result = await bff('POST', '/app-bff-api/auth/login/qrcode/status', {}, {
-    seed: req.session.qrSeedToken
-  });
-
-  if (result.ok && result.data) {
-    const status = result.data.status || result.data;
-    if (status === 'authorized' || status === 'confirmed' || result.data.access_token) {
-      // 授权成功，拿到 token
-      const token = result.data.access_token || result.data.token;
-      if (token) {
-        req.session.bffToken = token;
-        req.session.isLoggedIn = true;
-
-        // 获取用户信息
-        const userInfo = await bff('POST', '/app-bff-api/auth/v2/user/detail', {
-          Authorization: `Bearer ${token}`
-        });
-        if (userInfo.ok) {
-          req.session.user = {
-            id: userInfo.data.userName || userInfo.data.id || 'unknown',
-            name: userInfo.data.firstName || userInfo.data.nickName || '星巴克用户',
-            level: (userInfo.data.loyaltyTier || {}).userLevel || '会员',
-            phone: userInfo.data.cellPhone || ''
-          };
-        } else {
-          req.session.user = { id: req.session.qrOpenId, name: '星巴克用户', level: '会员' };
-        }
+      // code: 80032 => waiting to be scanned
+      // code: 80030 / 80031 等状态码通常为 scanned 或 authorized
+      if (data.code === 80032) {
+        return res.json({ status: 'waiting' });
       }
-      req.session.qrPhase = 'authorized';
-      return res.json({ status: 'authorized', token });
+
+      // 如果扫码或者确认成功
+      if (data.status === 200 && data.code !== 80032) {
+        req.session.isLoggedIn = true;
+        // 如果下发了 token 或 cookie
+        if (data.token || data.access_token) {
+          req.session.bffToken = data.token || data.access_token;
+        }
+        return res.json({ status: 'confirmed', data });
+      }
+    } catch (err) {
+      console.error('[Ping Error]', err.message);
     }
-    if (status === 'scanned') {
-      req.session.qrScanned = true;
-      return res.json({ status: 'scanned' });
-    }
-    return res.json({ status: 'waiting' });
   }
 
+  // 兜底本地逻辑
+  if (req.session.qrConfirmed) return res.json({ status: 'confirmed' });
+  if (req.session.qrScanned) return res.json({ status: 'scanned' });
   return res.json({ status: 'waiting' });
 });
 
