@@ -129,51 +129,8 @@ app.post('/api/qrcode/seed', async (req, res) => {
     return res.json({ success: true, qrImage, seed: realSeed, mode: 'browser' });
   } catch (e) {
     console.error('[QR] browser', e.message);
+    return res.status(500).json({ success: false, message: '官网二维码获取失败，请重试' });
   }
-  try {
-    console.log('[QR] 回退直接请求 seed...');
-    const smToken = process.env.SM_TOKEN || '';
-    const response = await axios.get('https://profile.starbucks.com.cn/api/qrcode/seed', {
-      headers: {
-        'Host': 'profile.starbucks.com.cn',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Origin': 'https://www.starbucks.com.cn',
-        'Referer': 'https://www.starbucks.com.cn/',
-        'x-msr-version': '2',
-        ...(smToken ? { 'Sm-Token': smToken } : {})
-      },
-      timeout: 10000
-    });
-
-    if (response.data && response.data.seed) {
-      const realSeed = response.data.seed;
-      console.log('[QR] 获取官方 seed 成功:', realSeed);
-      
-      req.session.qrRealSeed = realSeed;
-      req.session.qrCreatedAt = Date.now();
-      req.session.qrPhase = 'official';
-
-      // 官网把 seed 原文画进二维码，App 识别后确认，ping 返回 token
-      const qrImage = await qrcode.toDataURL(realSeed, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
-
-      return res.json({
-        success: true,
-        qrImage,
-        seed: realSeed,
-        mode: 'official'
-      });
-    }
-  } catch (e) {
-    console.error('[QR] 获取官方 seed 失败:', e.message);
-  }
-
-  // 回退降级方案
-  const localSeed = uuidv4();
-  req.session.qrSeedLocal = localSeed;
-  req.session.qrPhase = 'local';
-  const qrImage = await qrcode.toDataURL(`https://www.starbucks.com.cn/account/login?seed=${localSeed}`, { width: 300, margin: 2 });
-  res.json({ success: true, qrImage, mode: 'local' });
 });
 
 // ======================= [真·官方协议] 轮询扫码状态 =======================
