@@ -92,15 +92,13 @@ app.post('/api/qrcode/seed', async (req, res) => {
       req.session.qrCreatedAt = Date.now();
       req.session.qrPhase = 'official';
 
-      // App 只识别官网域名。扫码确认发生在星巴克 App，本站只轮询同一 seed
-      const qrUrl = `https://www.starbucks.com.cn/account/#/?seed=${encodeURIComponent(realSeed)}`;
-      const qrImage = await qrcode.toDataURL(qrUrl, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
+      // 官网把 seed 原文画进二维码，App 识别后确认，ping 返回 token
+      const qrImage = await qrcode.toDataURL(realSeed, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
 
       return res.json({
         success: true,
         qrImage,
         seed: realSeed,
-        qrUrl,
         mode: 'official'
       });
     }
@@ -136,21 +134,16 @@ app.get('/api/qrcode/status', async (req, res) => {
       const data = pingRes.data;
       console.log('[Ping]', data);
 
-      // code: 80032 => waiting to be scanned
-      // code: 80030 / 80031 等状态码通常为 scanned 或 authorized
-      if (data.code === 80032) {
-        return res.json({ status: 'waiting' });
-      }
-
-      // 如果扫码或者确认成功
-      if (data.status === 200 && data.code !== 80032) {
+      // 80032 waiting, 80033 scanned, 80035 expired, token 出现即授权成功
+      if (data.token) {
         req.session.isLoggedIn = true;
-        // 如果下发了 token 或 cookie
-        if (data.token || data.access_token) {
-          req.session.bffToken = data.token || data.access_token;
-        }
-        return res.json({ status: 'confirmed', data });
+        req.session.bffToken = data.token;
+        req.session.user = { id: 'qr', name: '扫码用户', level: '会员' };
+        return res.json({ status: 'confirmed', token: data.token });
       }
+      if (data.code === 80033) return res.json({ status: 'scanned' });
+      if (data.code === 80035) return res.json({ status: 'expired' });
+      if (data.code === 80032) return res.json({ status: 'waiting' });
     } catch (err) {
       console.error('[Ping Error]', err.message);
     }
