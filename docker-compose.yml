@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  starbucks-coupon:
+    build: .
+    container_name: starbucks-coupon
+    restart: always
+    ports:
+      - "3456:3456"
+    environment:
+      - NODE_ENV=production
+      - PORT=3456
+    volumes:
+      - ./sessions:/app/sessions
