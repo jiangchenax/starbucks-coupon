@@ -86,7 +86,7 @@ async function browserSeed() {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.CHROME_PATH || '/opt/google/chrome/google-chrome',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--ignore-certificate-errors']
   });
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -99,6 +99,14 @@ async function browserSeed() {
     } catch (_) {}
   });
   await page.goto('https://www.starbucks.com.cn/account/#/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+  seed = await page.evaluate(async () => {
+    const r = await fetch('https://profile.starbucks.com.cn/api/qrcode/seed', {
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'x-msr-version': '2' }
+    });
+    const data = await r.json();
+    return data.seed || '';
+  }).catch(() => '');
   await new Promise(r => setTimeout(r, 5000));
   const clicked = await page.evaluate(() => {
     const nodes = [...document.querySelectorAll('button, a, div, span, li')];
