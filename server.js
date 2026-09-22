@@ -9,7 +9,7 @@ const qrcode = require('qrcode');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3456;
+const PORT = process.env.PORT || 50016;
 
 const BFF_PROD = 'https://bff.starbucks.com.cn';
 const BFF_STG = 'https://bff.stg.starbucks.com.cn';
