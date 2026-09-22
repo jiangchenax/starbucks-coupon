@@ -92,9 +92,8 @@ app.post('/api/qrcode/seed', async (req, res) => {
       req.session.qrCreatedAt = Date.now();
       req.session.qrPhase = 'official';
 
-      // 指向本站扫码页，App 打开后由本站用官方 seed 轮询授权
-      const publicBase = process.env.PUBLIC_BASE_URL || 'https://starbucks.mossao.com';
-      const qrUrl = `${publicBase}/scan?seed=${encodeURIComponent(realSeed)}`;
+      // App 只识别官网域名。扫码确认发生在星巴克 App，本站只轮询同一 seed
+      const qrUrl = `https://www.starbucks.com.cn/account/#/?seed=${encodeURIComponent(realSeed)}`;
       const qrImage = await qrcode.toDataURL(qrUrl, { width: 300, margin: 2, errorCorrectionLevel: 'M' });
 
       return res.json({
